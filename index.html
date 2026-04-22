@@ -355,7 +355,7 @@
     <section class="panel">
       <label for="targetInput">要找的单号</label>
       <textarea id="targetInput" placeholder="一行一个，或从表格里整列复制进来"></textarea>
-      <div class="hint">支持粘贴带文字的内容，会自动提取 8-30 位字母数字单号并去重。</div>
+      <div class="hint">支持粘贴带文字的内容，会自动提取 8-30 位、包含数字的字母数字单号并去重。</div>
       <div class="buttons">
         <button class="primary" id="loadBtn" type="button">载入清单</button>
         <button class="danger" id="clearAllBtn" type="button">清空全部</button>
@@ -434,16 +434,21 @@
       return String(value || "").trim().toUpperCase();
     }
 
-    function parseTargets(raw) {
+    function extractCodes(raw) {
       const seen = new Set();
       return (String(raw || "").match(/[a-zA-Z0-9]{8,30}/g) || [])
         .map(normalize)
         .filter(Boolean)
+        .filter((value) => /\d/.test(value))
         .filter((value) => {
           if (seen.has(value)) return false;
           seen.add(value);
           return true;
         });
+    }
+
+    function parseTargets(raw) {
+      return extractCodes(raw);
     }
 
     function nowTime() {
@@ -554,7 +559,7 @@
     function removeTarget(code) {
       targets = targets.filter((target) => target !== code);
       found.delete(code);
-      targetInput.value = targets.join("\n");
+      targetInput.value = "";
       renderList();
       saveState();
       if (!targets.length) {
@@ -565,22 +570,39 @@
     }
 
     function loadTargets() {
-      targets = parseTargets(targetInput.value);
-      found = new Map();
-      targetInput.value = targets.join("\n");
-      renderList();
-      saveState();
-      if (!targets.length) {
+      const incoming = parseTargets(targetInput.value);
+      if (!incoming.length) {
         setResult("", "没有识别到单号", "请粘贴或输入要查找的单号。");
         return;
       }
-      setResult("warn", "清单已载入", `共 ${targets.length} 个单号，可以开始扫描。`);
+
+      const existing = new Set(targets);
+      const added = incoming.filter((code) => !existing.has(code));
+      targets = targets.concat(added);
+      found = new Map(Array.from(found.entries()).filter(([code]) => targets.includes(code)));
+      targetInput.value = "";
+      renderList();
+      saveState();
+
+      const skipped = incoming.length - added.length;
+      const detail = skipped
+        ? `新增 ${added.length} 个，跳过重复 ${skipped} 个；当前清单共 ${targets.length} 个。`
+        : `新增 ${added.length} 个；当前清单共 ${targets.length} 个。`;
+      setResult("warn", "清单已导入", detail);
       manualScan.focus();
     }
 
     function checkCode(raw) {
-      const code = normalize(raw);
-      if (!code) return;
+      const candidates = extractCodes(raw);
+      const code = candidates.find((value) => targets.includes(value)) || candidates[0] || "";
+      if (!code) {
+        const rawText = normalize(raw);
+        if (!rawText) return;
+        lastScan.textContent = "最近：" + rawText.slice(0, 40);
+        setResult("warn", "识别到了，但没有标准单号", "二维码内容里没有找到 8-30 位的字母数字单号。");
+        beep("warn");
+        return;
+      }
       lastScan.textContent = "最近：" + code;
 
       if (!targets.length) {
@@ -639,16 +661,7 @@
 
         scanner = new Html5Qrcode("reader");
         const formats = window.Html5QrcodeSupportedFormats ? [
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.CODE_93,
-          Html5QrcodeSupportedFormats.CODABAR,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.ITF,
-          Html5QrcodeSupportedFormats.QR_CODE,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E
+          Html5QrcodeSupportedFormats.QR_CODE
         ] : undefined;
 
         await scanner.start(
@@ -656,7 +669,7 @@
           {
             fps: 12,
             qrbox: (width, height) => {
-              const edge = Math.floor(Math.min(width, height) * 0.72);
+              const edge = Math.floor(Math.min(width, height) * 0.86);
               return { width: edge, height: edge };
             },
             formatsToSupport: formats
@@ -667,7 +680,8 @@
             if (code && (code !== lastCameraCode || now - lastCameraAt > 1600)) {
               lastCameraCode = code;
               lastCameraAt = now;
-              checkCode(code);
+              lastScan.textContent = "最近识别：" + code.slice(0, 40);
+              checkCode(decodedText);
             }
           }
         );
