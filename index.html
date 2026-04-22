@@ -661,18 +661,33 @@
 
         scanner = new Html5Qrcode("reader");
         const formats = window.Html5QrcodeSupportedFormats ? [
-          Html5QrcodeSupportedFormats.QR_CODE
-        ] : undefined;
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+          Html5QrcodeSupportedFormats.PDF_417,
+          Html5QrcodeSupportedFormats.AZTEC,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_93,
+          Html5QrcodeSupportedFormats.CODABAR,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E
+        ].filter(Boolean) : undefined;
 
         await scanner.start(
           { facingMode: "environment" },
           {
             fps: 12,
             qrbox: (width, height) => {
-              const edge = Math.floor(Math.min(width, height) * 0.86);
+              const edge = Math.floor(Math.min(width, height) * 0.92);
               return { width: edge, height: edge };
             },
-            formatsToSupport: formats
+            formatsToSupport: formats,
+            experimentalFeatures: {
+              useBarCodeDetectorIfSupported: true
+            }
           },
           (decodedText) => {
             const code = normalize(decodedText);
@@ -683,12 +698,15 @@
               lastScan.textContent = "最近识别：" + code.slice(0, 40);
               checkCode(decodedText);
             }
+          },
+          () => {
+            cameraStatus.textContent = "摄像头：扫描中（未识别到码）";
           }
         );
 
         scanning = true;
         cameraStatus.textContent = "摄像头：扫描中";
-        setResult("warn", "摄像头已开启", "把二维码放进画面中间的方框里。");
+        setResult("warn", "摄像头已开启", "把二维码/二维物流码放进画面中间的方框里。");
       } catch (_) {
         await stopCamera();
         setResult("miss", "无法打开摄像头", "请确认页面是 HTTPS，并在浏览器里允许摄像头权限。");
