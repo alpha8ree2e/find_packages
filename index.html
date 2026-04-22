@@ -355,7 +355,7 @@
     <section class="panel">
       <label for="targetInput">要找的单号</label>
       <textarea id="targetInput" placeholder="一行一个，或从表格里整列复制进来"></textarea>
-      <div class="hint">支持换行、空格、逗号、分号分隔，重复单号会自动去重。</div>
+      <div class="hint">支持粘贴带文字的内容，会自动提取 8-30 位字母数字单号并去重。</div>
       <div class="buttons">
         <button class="primary" id="loadBtn" type="button">载入清单</button>
         <button class="danger" id="clearAllBtn" type="button">清空全部</button>
@@ -436,8 +436,7 @@
 
     function parseTargets(raw) {
       const seen = new Set();
-      return String(raw || "")
-        .split(/[\s,，;；]+/)
+      return (String(raw || "").match(/[a-zA-Z0-9]{8,30}/g) || [])
         .map(normalize)
         .filter(Boolean)
         .filter((value) => {
@@ -568,6 +567,7 @@
     function loadTargets() {
       targets = parseTargets(targetInput.value);
       found = new Map();
+      targetInput.value = targets.join("\n");
       renderList();
       saveState();
       if (!targets.length) {
