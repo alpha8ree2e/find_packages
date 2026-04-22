@@ -292,31 +292,6 @@
         font-size: 22px;
         font-weight: 600;
       }
-      .mode-control {
-        display: flex;
-        gap: 8px;
-        width: 100%;
-        max-width: 280px;
-        padding: 4px;
-        background: var(--bg);
-        border-radius: var(--pill);
-      }
-      .mode-btn {
-        flex: 1;
-        border: 0;
-        border-radius: var(--pill);
-        background: transparent;
-        color: var(--muted);
-        font: inherit;
-        font-size: 14px;
-        padding: 8px 10px;
-        cursor: pointer;
-      }
-      .mode-btn.active {
-        background: var(--accent);
-        color: #fff;
-      }
-
       /* INPUT panel */
       .input-panel {
         flex: 1;
@@ -424,13 +399,6 @@
         width: min(74vw, 340px);
         height: min(74vw, 340px);
       }
-      .scan-guide.barcode {
-        width: min(88vw, 460px);
-        height: 26vw;
-        max-height: 150px;
-        min-height: 92px;
-      }
-
       /* 全屏顶部工具栏 */
       .fs-topbar {
         position: absolute;
@@ -772,24 +740,6 @@
         <div style="font-size: 13px; color: var(--muted); text-align: center">
           点击开始，摄像头全屏展开<br />扫到结果后自动弹出提示
         </div>
-        <div class="mode-control" aria-label="扫码模式">
-          <button
-            class="mode-btn active"
-            id="qrModeBtn"
-            type="button"
-            onclick="setScanMode('qr')"
-          >
-            二维码
-          </button>
-          <button
-            class="mode-btn"
-            id="barcodeModeBtn"
-            type="button"
-            onclick="setScanMode('barcode')"
-          >
-            条形码
-          </button>
-        </div>
         <button class="btn-scan-big" onclick="startScan()">开始扫描</button>
         <button
           class="btn btn-primary btn-exp-sm"
@@ -926,7 +876,6 @@
 
       let html5QrCode = null;
       let scanActive = false;
-      let scanMode = "qr";
 
       const DEBOUNCE_MS = 2000;
       const lastSeen = new Map();
@@ -1111,37 +1060,16 @@
         toast("已删除 " + code);
       }
 
-      function setScanMode(mode) {
-        scanMode = mode === "barcode" ? "barcode" : "qr";
-        document
-          .getElementById("qrModeBtn")
-          .classList.toggle("active", scanMode === "qr");
-        document
-          .getElementById("barcodeModeBtn")
-          .classList.toggle("active", scanMode === "barcode");
-        const guide = document.getElementById("scan-guide");
-        if (guide) guide.className = "scan-guide " + scanMode;
-      }
-
       function getScanConfig() {
-        const isBarcode = scanMode === "barcode";
         return {
           fps: 20,
           qrbox: (w, h) => {
-            if (isBarcode) {
-              return {
-                width: Math.round(w * 0.88),
-                height: Math.max(92, Math.round(h * 0.18)),
-              };
-            }
             const edge = Math.round(Math.min(w, h) * 0.74);
             return { width: edge, height: edge };
           },
           aspectRatio: window.innerHeight / window.innerWidth,
           rememberLastUsedCamera: true,
-          formatsToSupport: isBarcode
-            ? [Html5QrcodeSupportedFormats.CODE_128]
-            : [Html5QrcodeSupportedFormats.QR_CODE],
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
           experimentalFeatures: {
             useBarCodeDetectorIfSupported: true,
           },
@@ -1165,8 +1093,7 @@
 
         // 展开全屏层
         document.getElementById("fs-scan").classList.add("active");
-        document.getElementById("scan-guide").className =
-          "scan-guide " + scanMode;
+        document.getElementById("scan-guide").className = "scan-guide qr";
 
         html5QrCode = new Html5Qrcode("reader-fs");
         const config = getScanConfig();
@@ -1531,7 +1458,6 @@
       renderOrderList();
       updateStats();
       updateFsStats();
-      setScanMode(scanMode);
     </script>
   </body>
 </html>
