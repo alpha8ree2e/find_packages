@@ -110,10 +110,6 @@
       margin-top: 10px;
     }
 
-    .buttons.three {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
     button {
       min-height: 46px;
       border: 1px solid transparent;
@@ -197,14 +193,16 @@
       object-fit: cover;
     }
 
-    .scan-line {
+    .scan-frame {
       pointer-events: none;
       position: absolute;
-      left: 8%;
-      right: 8%;
+      left: 50%;
       top: 50%;
-      height: 2px;
-      background: rgba(255, 255, 255, .9);
+      width: min(72%, 320px);
+      aspect-ratio: 1;
+      transform: translate(-50%, -50%);
+      border: 3px solid rgba(255, 255, 255, .9);
+      border-radius: 8px;
       box-shadow: 0 0 0 1px rgba(20, 99, 216, .7), 0 0 18px rgba(20, 99, 216, .85);
     }
 
@@ -275,7 +273,7 @@
 
     .package {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto auto;
       gap: 8px;
       align-items: center;
       min-width: 0;
@@ -320,13 +318,30 @@
       white-space: nowrap;
     }
 
+    .remove-btn {
+      display: inline-grid;
+      place-items: center;
+      width: 34px;
+      min-width: 34px;
+      height: 34px;
+      min-height: 34px;
+      padding: 0;
+      border-color: #ffc9c3;
+      border-radius: 8px;
+      background: #fff0ee;
+      color: var(--red);
+      font-size: 20px;
+      line-height: 1;
+    }
+
     @media (max-width: 520px) {
       .app { padding: 10px; }
       h1 { font-size: 24px; }
-      .buttons, .buttons.three { grid-template-columns: 1fr; }
+      .buttons { grid-template-columns: 1fr; }
       .stats { gap: 6px; }
       .stat strong { font-size: 24px; }
       button { width: 100%; }
+      .remove-btn { width: 34px; }
     }
   </style>
 </head>
@@ -341,9 +356,8 @@
       <label for="targetInput">要找的单号</label>
       <textarea id="targetInput" placeholder="一行一个，或从表格里整列复制进来"></textarea>
       <div class="hint">支持换行、空格、逗号、分号分隔，重复单号会自动去重。</div>
-      <div class="buttons three">
+      <div class="buttons">
         <button class="primary" id="loadBtn" type="button">载入清单</button>
-        <button class="secondary" id="sampleBtn" type="button">填入示例</button>
         <button class="danger" id="clearAllBtn" type="button">清空全部</button>
       </div>
     </section>
@@ -363,7 +377,7 @@
       </div>
       <div class="reader" id="readerWrap">
         <div id="reader"></div>
-        <div class="scan-line"></div>
+        <div class="scan-frame"></div>
       </div>
       <div class="small-row">
         <span id="cameraStatus">摄像头：未开启</span>
@@ -394,7 +408,6 @@
     const targetInput = document.getElementById("targetInput");
     const manualScan = document.getElementById("manualScan");
     const loadBtn = document.getElementById("loadBtn");
-    const sampleBtn = document.getElementById("sampleBtn");
     const clearAllBtn = document.getElementById("clearAllBtn");
     const checkBtn = document.getElementById("checkBtn");
     const cameraBtn = document.getElementById("cameraBtn");
@@ -455,6 +468,7 @@
         targetInput.value = data.text || "";
         targets = Array.isArray(data.targets) ? data.targets.map(normalize).filter(Boolean) : parseTargets(targetInput.value);
         found = new Map(Array.isArray(data.found) ? data.found : []);
+        found = new Map(Array.from(found.entries()).filter(([code]) => targets.includes(code)));
       } catch (_) {
         targets = [];
         found = new Map();
@@ -524,11 +538,31 @@
         time.className = "time";
         time.textContent = found.get(code) || "";
 
-        row.append(badge, codeEl, time);
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "remove-btn";
+        removeBtn.type = "button";
+        removeBtn.textContent = "×";
+        removeBtn.setAttribute("aria-label", `删除 ${code}`);
+        removeBtn.addEventListener("click", () => removeTarget(code));
+
+        row.append(badge, codeEl, time, removeBtn);
         fragment.appendChild(row);
       });
       packageList.appendChild(fragment);
       updateStats();
+    }
+
+    function removeTarget(code) {
+      targets = targets.filter((target) => target !== code);
+      found.delete(code);
+      targetInput.value = targets.join("\n");
+      renderList();
+      saveState();
+      if (!targets.length) {
+        setResult("", "清单已清空", "可以粘贴下一批要找的单号。");
+      } else {
+        setResult("warn", "已删除单号", `${code} 已从待找清单里移除。`);
+      }
     }
 
     function loadTargets() {
@@ -621,10 +655,10 @@
           { facingMode: "environment" },
           {
             fps: 12,
-            qrbox: (width, height) => ({
-              width: Math.floor(width * 0.86),
-              height: Math.max(120, Math.floor(height * 0.32))
-            }),
+            qrbox: (width, height) => {
+              const edge = Math.floor(Math.min(width, height) * 0.72);
+              return { width: edge, height: edge };
+            },
             formatsToSupport: formats
           },
           (decodedText) => {
@@ -640,6 +674,7 @@
 
         scanning = true;
         cameraStatus.textContent = "摄像头：扫描中";
+        setResult("warn", "摄像头已开启", "把二维码放进画面中间的方框里。");
       } catch (_) {
         await stopCamera();
         setResult("miss", "无法打开摄像头", "请确认页面是 HTTPS，并在浏览器里允许摄像头权限。");
@@ -682,10 +717,6 @@
     }
 
     loadBtn.addEventListener("click", loadTargets);
-    sampleBtn.addEventListener("click", () => {
-      targetInput.value = "GFUS01043614738946\nBG-26040180VJXXA5NE\nYT2609100705572294";
-      loadTargets();
-    });
     clearAllBtn.addEventListener("click", async () => {
       await stopCamera();
       targetInput.value = "";
