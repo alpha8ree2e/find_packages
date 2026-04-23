@@ -6,7 +6,12 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
-    <title>包裹扫码核验</title>
+    <title>找出那该死的包裹</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href='data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"%3E%3Crect width="64" height="64" rx="14" fill="%230071e3"/%3E%3Cpath d="M18 25v-7h7M39 18h7v7M46 39v7h-7M25 46h-7v-7" fill="none" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/%3E%3Cpath d="M22 32h20" stroke="white" stroke-width="5" stroke-linecap="round"/%3E%3C/svg%3E'
+    />
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
       :root {
@@ -459,16 +464,16 @@
 
       /* 扫描结果 Popup */
       .scan-popup {
-        position: absolute;
+        position: fixed;
         left: 50%;
-        bottom: 110px;
+        bottom: 96px;
         transform: translateX(-50%) translateY(20px);
         opacity: 0;
         pointer-events: none;
         transition:
           opacity 0.2s,
           transform 0.2s;
-        z-index: 20;
+        z-index: 360;
         min-width: 260px;
         max-width: 88vw;
       }
@@ -507,7 +512,7 @@
         margin-top: 3px;
       }
 
-      /* 扫描记录（非全屏时显示） */
+      /* 核验记录 */
       .scan-log {
         flex: 1;
         overflow-y: auto;
@@ -755,8 +760,8 @@
         </button>
       </div>
       <div class="scan-log" style="border-top: 1px solid var(--border)">
-        <div class="log-title">扫描记录</div>
-        <div id="log-body"><div class="empty-hint">暂无扫描记录</div></div>
+        <div class="log-title">核验记录</div>
+        <div id="log-body"><div class="empty-hint">暂无核验记录</div></div>
       </div>
     </div>
 
@@ -772,13 +777,14 @@
             id="manual-exact-input"
             autocomplete="off"
             autocapitalize="characters"
-            placeholder="扫描枪输入完整单号，或手动输入后回车"
+            placeholder="扫描枪发送 Enter 后自动核验，也可手动输入后回车"
           />
           <button class="btn btn-primary" onclick="checkExactInput()">
             核验这个单号
           </button>
           <div class="manual-hint">
-            这里用于扫描枪或完整单号。只有完全匹配清单里的单号，才会标记为已找到。
+            这里用于扫描枪或完整单号。扫描枪设置为扫码后发送 Enter
+            时会自动核验；只有完全匹配清单里的单号，才会标记为已找到。
           </div>
         </div>
         <div class="manual-card">
@@ -790,12 +796,18 @@
             id="manual-search-input"
             autocomplete="off"
             autocapitalize="characters"
-            placeholder="输入至少 3 位，例如 74211"
+            placeholder="输入至少 4 位，例如 7421"
           />
           <div class="manual-result" id="manual-search-results">
             <div class="empty-hint">
-              输入几位后，会显示待查找清单里的候选单号。
+              输入至少 4 位后，会显示待查找清单里的候选单号。
             </div>
+          </div>
+        </div>
+        <div class="scan-log">
+          <div class="log-title">核验记录</div>
+          <div id="input-log-body">
+            <div class="empty-hint">暂无核验记录</div>
           </div>
         </div>
       </div>
@@ -817,15 +829,15 @@
           <button class="btn-fs-stop" onclick="stopScan()">停止</button>
         </div>
       </div>
+    </div>
 
-      <!-- 结果 Popup -->
-      <div class="scan-popup" id="scan-popup">
-        <div class="popup-inner" id="popup-inner">
-          <div class="popup-icon" id="popup-icon">✓</div>
-          <div>
-            <div class="popup-code" id="popup-code"></div>
-            <div class="popup-msg" id="popup-msg"></div>
-          </div>
+    <!-- 结果 Popup -->
+    <div class="scan-popup" id="scan-popup">
+      <div class="popup-inner" id="popup-inner">
+        <div class="popup-icon" id="popup-icon">✓</div>
+        <div>
+          <div class="popup-code" id="popup-code"></div>
+          <div class="popup-msg" id="popup-msg"></div>
         </div>
       </div>
     </div>
@@ -987,12 +999,11 @@
           toast("列表已为空");
           return;
         }
-        if (!confirm("确认清空全部单号和扫描记录？")) return;
+        if (!confirm("确认清空全部单号和核验记录？")) return;
         orders.clear();
         missLog.clear();
         lastSeen.clear();
-        document.getElementById("log-body").innerHTML =
-          '<div class="empty-hint">暂无扫描记录</div>';
+        clearLogBodies();
         renderOrderList();
         updateStats();
         updateFsStats();
@@ -1009,8 +1020,7 @@
         orders.forEach((_, code) => orders.set(code, "pending"));
         missLog.clear();
         lastSeen.clear();
-        document.getElementById("log-body").innerHTML =
-          '<div class="empty-hint">暂无扫描记录</div>';
+        clearLogBodies();
         renderOrderList();
         updateStats();
         updateFsStats();
@@ -1144,6 +1154,18 @@
         hidePopup();
       }
 
+      function getPendingCount() {
+        let pending = 0;
+        orders.forEach((status) => {
+          if (status !== "found") pending++;
+        });
+        return pending;
+      }
+
+      function isAllFound() {
+        return orders.size > 0 && getPendingCount() === 0;
+      }
+
       // ─── Process Code ────────────────────────────
       function processCode(code) {
         const candidates = extractCodes(code);
@@ -1155,13 +1177,21 @@
         const found = orders.has(cleanCode);
         if (found) {
           orders.set(cleanCode, "found");
-          showPopup(true, cleanCode, "在列表中 ✓");
+          showPopup(
+            true,
+            cleanCode,
+            getPendingCount() === 0 ? "已找到所有包裹 ✓" : "在列表中 ✓",
+          );
           addLog("✓", cleanCode, true);
           vibrate([80, 40, 80]);
           renderOrderList();
         } else {
           missLog.add(cleanCode);
-          showPopup(false, cleanCode, "不在列表中 ✗");
+          showPopup(
+            false,
+            cleanCode,
+            isAllFound() ? "已找到所有包裹；不在列表中 ✗" : "不在列表中 ✗",
+          );
           addLog("×", cleanCode, false);
           vibrate([300]);
         }
@@ -1179,13 +1209,21 @@
         const found = orders.has(code);
         if (found) {
           orders.set(code, "found");
-          showPopup(true, code, "精准匹配 ✓");
+          showPopup(
+            true,
+            code,
+            getPendingCount() === 0 ? "已找到所有包裹 ✓" : "精准匹配 ✓",
+          );
           addLog("✓", code, true);
           vibrate([80, 40, 80]);
           renderOrderList();
         } else {
           missLog.add(code);
-          showPopup(false, code, "不在列表中 ✗");
+          showPopup(
+            false,
+            code,
+            isAllFound() ? "已找到所有包裹；不在列表中 ✗" : "不在列表中 ✗",
+          );
           addLog("×", code, false);
           vibrate([300]);
         }
@@ -1209,9 +1247,9 @@
       function renderManualMatches(query) {
         const box = document.getElementById("manual-search-results");
         const q = normalize(query);
-        if (q.length < 3) {
+        if (q.length < 4) {
           box.innerHTML =
-            '<div class="empty-hint">输入至少 3 位后显示候选单号。</div>';
+            '<div class="empty-hint">输入至少 4 位后显示候选单号。</div>';
           return;
         }
         const matches = [...orders.entries()]
@@ -1264,30 +1302,43 @@
         document.getElementById("fs-miss").textContent = "✗ " + missLog.size;
       }
 
+      function clearLogBodies() {
+        ["log-body", "input-log-body"].forEach((id) => {
+          const body = document.getElementById(id);
+          if (body) {
+            body.innerHTML = '<div class="empty-hint">暂无核验记录</div>';
+          }
+        });
+      }
+
       function addLog(icon, code, found) {
-        const body = document.getElementById("log-body");
-        if (body.querySelector(".empty-hint")) body.innerHTML = "";
+        const bodies = ["log-body", "input-log-body"]
+          .map((id) => document.getElementById(id))
+          .filter(Boolean);
         const now = new Date();
         const t = [now.getHours(), now.getMinutes(), now.getSeconds()]
           .map((n) => String(n).padStart(2, "0"))
           .join(":");
-        const item = document.createElement("div");
-        item.className = "log-item";
-        item.innerHTML =
-          '<span class="log-icon' +
-          (found ? "" : " miss") +
-          '">' +
-          icon +
-          "</span>" +
-          '<span class="log-code" style="color:' +
-          (found ? "var(--link)" : "var(--text)") +
-          '">' +
-          esc(code) +
-          "</span>" +
-          '<span class="log-time">' +
-          t +
-          "</span>";
-        body.insertBefore(item, body.firstChild);
+        bodies.forEach((body) => {
+          if (body.querySelector(".empty-hint")) body.innerHTML = "";
+          const item = document.createElement("div");
+          item.className = "log-item";
+          item.innerHTML =
+            '<span class="log-icon' +
+            (found ? "" : " miss") +
+            '">' +
+            icon +
+            "</span>" +
+            '<span class="log-code" style="color:' +
+            (found ? "var(--link)" : "var(--text)") +
+            '">' +
+            esc(code) +
+            "</span>" +
+            '<span class="log-time">' +
+            t +
+            "</span>";
+          body.insertBefore(item, body.firstChild);
+        });
       }
 
       function updateStats() {
